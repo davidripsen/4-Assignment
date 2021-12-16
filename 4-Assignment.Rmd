@@ -1,5 +1,22 @@
-# 4. Assignment - Wind
+---
+title: "4th Assignment: Title"
+author: "David Ribberholt Ipsen (s164522), Kasper .... (s....), Michelle ... (s....)"
+date: "November 2021"
+output:
+  html_document:
+  pdf_document:
+    toc: yes
+editor_options: 
+  chunk_output_type: console
+---
 
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(cache = F) # Omg mega fedt for compile-tiden med cache=TRUE <3
+```
+
+
+```{r}
 if (Sys.info()[7] == "davidipsen"){
   setwd("~/Documents/DTU/3. Semester (MSc)/Advanced Time Series/Assignments/4-Assignment/comp_ex_4_scripts_2011/r/")
 } else if (Sys.info()[7] == "Hvad end Kaspers PC hedder-sikkert noget UNIX-hejs ^_^"){
@@ -14,8 +31,11 @@ D$t <- as.POSIXct(X$t, tz="UTC")
 plot(D$p[1:1000],type='l')
 hist(D$p)
 plot(D[1:100,]) # Plot subset of from all variables
+```
+
 
 #### BENCHMARKS ######
 #### Continous-Descrete State Space Model (with adaptivity)
 #### MARKOV-SWITCHING ######
 #### DESCRETIZING (EULER-MARYAMA)#####
+
