@@ -16,6 +16,9 @@ knitr::opts_chunk$set(cache = F) # Omg mega fedt for compile-tiden med cache=TRU
 ```
 
 
+# 1. Introduction
+## 1.1 Descriptive statistics
+
 ```{r}
 if (Sys.info()[7] == "davidipsen"){
   setwd("~/Documents/DTU/3. Semester (MSc)/Advanced Time Series/Assignments/4-Assignment")
@@ -31,10 +34,15 @@ n = dim(D)[1]
 plot(D$p[1:1000],type='l')
 hist(D$p)
 plot(D[1:100,]) # Plot subset of from all variables
+
+plot(D$t, abs(cos(pi*D$toy/365))) # Utilise the time-of-year variable as follows, decsribing the degree of winter.
 ```
 
 
-#### BENCHMARKS ######
+
+
+# 2. BENCHMARKS ######
+
 
 Let's mark some benches, bitches
 
@@ -51,8 +59,9 @@ fit3 = lm(p ~ ., data=D[,-1]) ; summary(fit3); logLik(fit3)
 # AR(1)X
 fit4 = lm(p ~ . + D$p[-n], data=D[2:n,-1]); summary(fit4); logLik(fit4)
 
-
-# Thoughts: Wind has a logistic effect for the power: ... + logit(wind)
+# Thoughts:
+# 1. Wind has a logistic effect for the power: ... + logit(wind)
+# 2. toy = abs(cos(pi*D$toy/365))
 ```
 
 Problem MANGLER: Fucking NaN
