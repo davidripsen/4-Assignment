@@ -1,0 +1,139 @@
+---
+title: "4th Assignment: Title"
+author: "David Ribberholt Ipsen (s164522), Kasper .... (s....), Michelle ... (s....)"
+date: "November 2021"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+editor_options: 
+  chunk_output_type: console
+fig_width: 12
+fig_height: 6
+---
+
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(cache = F) # Omg mega fedt for compile-tiden med cache=TRUE <3
+```
+
+
+# 1. Introduction
+## 1.1 Descriptive statistics
+
+```{r}
+if (Sys.info()[7] == "davidipsen"){
+  setwd("~/Documents/DTU/3. Semester (MSc)/Advanced Time Series/Assignments/4-Assignment")
+} else if (Sys.info()[7] == "Hvad end Kaspers PC hedder-sikkert noget UNIX-hejs ^_^"){
+}
+
+D <- read.table("comp_ex_4_scripts_2011/data/cex4WindDataInterpolated.csv", sep=",",
+                header=TRUE, stringsAsFactors=FALSE)
+D$t <- as.POSIXct(D$t, tz="UTC")
+n = dim(D)[1]
+
+# Descriptive statistics
+plot(D$p[1:1000],type='l')
+hist(D$p)
+plot(D[1:100,]) # Plot subset of from all variables
+
+plot(D$t, abs(cos(pi*D$toy/365))) # Utilise the time-of-year variable as follows, decsribing the degree of winter.
+```
+
+
+
+
+# 2. BENCHMARKS ######
+
+
+Let's mark some benches, bitches
+
+```{r}
+# Mean Model
+fit1 = lm(p ~ 1, data=D); fit1; logLik(fit1)
+
+# AR(1)
+fit2 = ar(D$p, na.action = na.pass, order.max=1); fit2;
+
+# Linear Regression
+fit3 = lm(p ~ ., data=D[,-1]) ; summary(fit3); logLik(fit3)
+
+# AR(1)X
+fit4 = lm(p ~ . + D$p[-n], data=D[2:n,-1]); summary(fit4); logLik(fit4)
+
+# Thoughts:
+# 1. Wind has a logistic effect for the power: ... + logit(wind)
+# 2. toy = abs(cos(pi*D$toy/365))
+```
+
+Problem MANGLER: Fucking NaN
+
+# 3. AUTOREGRESSIVE MARKOV-SWITCHING MODEL (MSM-AR)######
+"\textit{A Markov-switching (also regime-switching) model is a general- ization both of Markov models and AR(p) processes. It can be seen as an autoregressive model with a state-dependent mean and variance where the states follow a Markov process. An AR(1) Markov- switching process is given by}" (REF JAN KLOP) (REF: https://cran.r-project.org/web/packages/MSwM/vignettes/examples.pdf)
+
++ regime-dependant AR-coefficient(s).
+
+```{r}
+#install.packages('MSwM')
+library(MSwM)
+library(parallel)
+Dsub = D[1:250,] # Subset data for dev
+
+# Simple Linear Regression
+fit2b = lm(p ~ Ws1, data=Dsub) ; summary(fit2b); logLik(fit2b)
+
+# Fit MSM
+fit_msm = msmFit(fit2b, k=2, p=1, sw=rep(TRUE,4), control = list(parallel = TRUE))
+summary(fit_msm)
+#plotProb(fit_msm, which=1)
+plotProb(fit_msm, which=2)
+#plotProb(fit_msm, which=3)
+```
+
+The global decoding, i.e. the most probable regime at time t as seen above, seem to correspond to periods with constant wind power (regime 1) and periods with changing wind power (regime 2). This corresponds well with what we could expect of a state-dependent AR-coefficient: That one regime would correspond to keeping things constant.
+
+Now it seems obvious to add another state, hopefully separating dynamics of the wind power when in decline / increasing.
+
+
+```{r}
+Dsub = D[1:250,] # Subset data for dev
+fit2b = lm(p ~ Ws1, data=Dsub) ; summary(fit2b); logLik(fit2b) # Refit
+
+fit_msm2 = msmFit(fit2b, k=3, p=1, sw=rep(TRUE,4), control = list(parallel = TRUE))
+
+for (i in 2:4){
+plotProb(fit_msm2, which=i)
+}
+```
+
+Now regime 3 corresponds to a constant period, while regime 1 and 2 seem to correspond to periods with high and low volatility.
+
+Let's try add 1 or 2 more regimes
+
+```{r}
+Dsub = D[1:2000,] # Subset data for dev - increase for identifiability
+fit2b = lm(p ~ Ws1, data=Dsub) ; summary(fit2b); logLik(fit2b) # Refit
+
+# Fit Markov-Switching model
+fit_msm2 = msmFit(fit2b, k=4, p=1, sw=rep(TRUE,4), control = list(parallel = TRUE))
+
+for (i in 2:5){
+plotProb(fit_msm2, which=i)
+}
+```
+
+For convergence / identifiability it was necessary to increase the amount of data. This however, makes it hard to interpret the results. It does not seem to be the case, that the method identifies regimes of increasing and decreasing dynamics.
+
+
+
+
+
+
+#### DESCRETIZING (EULER-MARYAMA)#####
+#### Continous-Descrete State Space Model (with adaptivity)
+Thoughts
+\begin{enumerate}
+\item + ... rX(1-X/CAP)  | W = wind, X = True wind power
+\item r = f()
+\end{enumerate}
+
