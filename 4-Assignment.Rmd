@@ -3,9 +3,9 @@ title: "4th Assignment: Title"
 author: "David Ribberholt Ipsen (s164522), Kasper .... (s....), Michelle ... (s....)"
 date: "November 2021"
 output:
-  html_document:
   pdf_document:
     toc: yes
+  html_document:
 editor_options: 
   chunk_output_type: console
 ---
@@ -18,14 +18,14 @@ knitr::opts_chunk$set(cache = F) # Omg mega fedt for compile-tiden med cache=TRU
 
 ```{r}
 if (Sys.info()[7] == "davidipsen"){
-  setwd("~/Documents/DTU/3. Semester (MSc)/Advanced Time Series/Assignments/4-Assignment/comp_ex_4_scripts_2011/r/")
+  setwd("~/Documents/DTU/3. Semester (MSc)/Advanced Time Series/Assignments/4-Assignment")
 } else if (Sys.info()[7] == "Hvad end Kaspers PC hedder-sikkert noget UNIX-hejs ^_^"){
-  
 }
 
-D <- read.table("../data/cex4WindDataInterpolated.csv", sep=",",
+D <- read.table("comp_ex_4_scripts_2011/data/cex4WindDataInterpolated.csv", sep=",",
                 header=TRUE, stringsAsFactors=FALSE)
-D$t <- as.POSIXct(X$t, tz="UTC")
+D$t <- as.POSIXct(D$t, tz="UTC")
+n = dim(D)[1]
 
 # Descriptive statistics
 plot(D$p[1:1000],type='l')
@@ -35,7 +35,35 @@ plot(D[1:100,]) # Plot subset of from all variables
 
 
 #### BENCHMARKS ######
+
+Let's mark some benches, bitches
+
+```{r}
+# Mean Model
+fit1 = lm(p ~ 1, data=D); fit1; logLik(fit1)
+
+# AR(1)
+fit2 = ar(D$p, na.action = na.pass, order.max=1); fit2;
+
+# Linear Regression
+fit3 = lm(p ~ ., data=D[,-1]) ; summary(fit3); logLik(fit3)
+
+# AR(1)X
+fit4 = lm(p ~ . + D$p[-n], data=D[2:n,-1]); summary(fit4); logLik(fit4)
+
+
+# Thoughts: Wind has a logistic effect for the power: ... + logit(wind)
+```
+
+Problem MANGLER: Fucking NaN
+
 #### Continous-Descrete State Space Model (with adaptivity)
+Thoughts
+\begin{enumerate}
+\item + ... rX(1-X/CAP)  | W = wind, X = True wind power
+\item r = f()
+\end{enumerate}
+
 #### MARKOV-SWITCHING ######
 #### DESCRETIZING (EULER-MARYAMA)#####
 

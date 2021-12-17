@@ -20,7 +20,7 @@
 ## Start
 rm(list=ls())
 if (Sys.info()[7] == "davidipsen")
-{setwd("~/Documents/DTU/3. Semester (MSc)/Advanced Time Series/Assignments/4-Assignment/comp_ex_4_scripts_2011/r/")
+{setwd("~/Documents/DTU/3. Semester (MSc)/Advanced Time Series/Assignments/4-Assignment/comp_ex_4_scripts_2011/r")
 }
 
 
@@ -386,7 +386,7 @@ names(X) <- c("t","toy","p","Ws1","Wd1","T1","Ws2","Wd2","T2","Ws3","Wd3","T3")
 summary(X)
 
 ## Write the data file
-write.table(X, "~/courses/ats02427/computerExercise4Wind/cex4WindDataInterpolated.csv", sep=",", row.names=FALSE)
+write.table(X, "~/Documents/DTU/3. Semester (MSc)/Advanced Time Series/Assignments/4-Assignment/comp_ex_4_scripts_2011/data/cex4WindDataInterpolated.csv", sep=",", row.names=FALSE)
 
 ## See the gaps left
 plot(X$t, apply(X,1,function(x){ any(is.na(x)) }), type="l")
@@ -407,7 +407,7 @@ X <- X[,c("t","toy.x","p","Ws.x","Wd.x","T.x","Ws.y","Wd.y","T.y","Ws","Wd","T")
 names(X) <- c("t","toy","p","Ws1","Wd1","T1","Ws2","Wd2","T2","Ws3","Wd3","T3")
 summary(X)
 
-write.table(X, "~/courses/ats02427/computerExercise4Wind/cex4WindDataNoInterpolation.csv", sep=",", row.names=FALSE)
+write.table(X, "~/Documents/DTU/3. Semester (MSc)/Advanced Time Series/Assignments/4-Assignment/comp_ex_4_scripts_2011/data/cex4WindDataNoInterpolation.csv", sep=",", row.names=FALSE)
 
 ## See the gaps left
 plot(X$t, apply(X,1,function(x){ any(is.na(x)) }), type="l")
