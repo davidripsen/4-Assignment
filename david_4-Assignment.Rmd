@@ -15,10 +15,19 @@ fig_height: 6
 
 ```{r setup, include=FALSE, echo=FALSE}
 knitr::opts_chunk$set(cache = F) # Omg mega fedt for compile-tiden med cache=TRUE <3
+
+# Functions
+logit = function(x){
+  1/exp(-x)
+}
 ```
 
+MANGLER: Håndtér NaN
 
 # 1. Introduction
+bla bla bla. This report deviates a bit from the otherwise stated problem formulation in that it sets out to try many different models (for sake of learning) instead of going very deep, comprehensivly into few models.
+- bla. kun 1-hour model. Focus solely on 1h horizons for forecasting. The models generalizes easily.
+
 ## 1.1 Descriptive statistics
 
 ```{r}
@@ -37,9 +46,51 @@ plot(D$p[1:1000],type='l')
 hist(D$p)
 plot(D[1:100,]) # Plot subset of from all variables
 
-plot(D$t, abs(cos(pi*D$toy/365))) # Utilise the time-of-year variable as follows, decsribing the degree of winter.
+# NaN-debugging
+sum(is.na(D$p))
+sum(is.na(D$Ws1))
 ```
 
+## Plot time of year vs (normalized) time-of-year
+```{r}
+# Define normalized time of year: Ratio between 0 and 1 indicating the extent of winter (end of year)
+D$ntoy = abs(cos(pi*D$toy/365))
+
+plot(D$t, D$ntoy) # Utilise the time-of-year variable as follows, decsribing the degree of winter.
+plot(D$ntoy, D$p)
+
+lines(D$ntoy[!is.na(D$p)], predict(loess(p ~ ntoy, dat=D, span=0.3, family='gaussian', degree=2), ntoy=list(D$ntoy)), col=3, lwd=2)
+```
+= mere wind power om vinteren (1)
+
+
+```{r}
+library(ggplot2)
+mask = !is.na(D$Ws1) & !is.na(D$p) & D$Ws1<25 # Mask non-NaN
+
+plot(D$Ws1[mask], D$p[mask])
+points(D$Ws1[mask], predict(loess(p ~ Ws1, dat=D[mask,], span=0.3, family='gaussian', degree=2), Ws1=list(D$Ws1[mask])), col=3, lwd=0.7)
+
+
+#p <- ggplot(D, aes(Ws1,p))
+# Add colouring and change bins
+#library(RColorBrewer)
+#rf <- colorRampPalette(rev(brewer.pal(11,'Spectral')))
+#r <- rf(32)
+#h3 <- p + stat_bin2d(bins=100) + scale_fill_gradientn(colours=r) + ggtitle(sprintf("Wind speed forecast (1h) vs. power"))
+#h3
+```
+
+There seem to be somewhat of an logistic effect of wind speed on the power, i.e. the power increases exponentially in the beginning but becomes rather saturated with more and more wind until a tens to it's asymptote around $p = 20$. Let's try to fit that into the model.
+
+```{r}
+# Wind direction
+p <- ggplot(D, aes(Wd1,p))
+h4 <- p + stat_bin2d(bins=100) + scale_fill_gradientn(colours=r) + ggtitle(sprintf("Wind direction forecast (1h) vs. wind power"))
+h4
+```
+
+It seems to be favourable for the wind power production if the wind direction is between 200 and 300 degrees. Let's try adding it to the model.
 
 
 
@@ -49,24 +100,35 @@ plot(D$t, abs(cos(pi*D$toy/365))) # Utilise the time-of-year variable as follows
 Let's mark some benches, bitches
 
 ```{r}
+library(metrics)
+
 # Mean Model
-fit1 = lm(p ~ 1, data=D); fit1; logLik(fit1)
+fit1 = lm(p ~ 1, data=D); summary(fit1); logLik(fit1)
 
 # AR(1)
 fit2 = ar(D$p, na.action = na.pass, order.max=1); fit2;
 
 # Linear Regression
-fit3 = lm(p ~ ., data=D[,-1]) ; summary(fit3); logLik(fit3)
+fit3a = lm(p ~ Ws1 + Wd1 + T1 + ntoy, data=D) ; summary(fit3a); logLik(fit3a) # Chosen var
+fit3b = lm(p ~ ., data=D[,-1]) ; summary(fit3b); logLik(fit3b) # All var
 
 # AR(1)X
 fit4 = lm(p ~ . + D$p[-n], data=D[2:n,-1]); summary(fit4); logLik(fit4)
 
 # Thoughts:
 # 1. Wind has a logistic effect for the power: ... + logit(wind)
-# 2. toy = abs(cos(pi*D$toy/365))
-```
+# 2. toy = abs(cos(pi*D$toy/365)) - blæser lidt mere i nov/dec
 
-Problem MANGLER: Fucking NaN
+fit5 = nls(p ~ a0 + a1*Ws1 + a2*Wd1 + a3*T1 + a4*ntoy, start = list(a0=0, a1=0.5, a2=0.5, a3=0.1, a4=1), data=D); summary(fit5)
+  # Nice, exact same results as for lm()
+
+# OK let's overwright it and acutally do some non-linear fit: Using findings from the descriptive section
+fit6 = nls(p ~ a0  + a11*logit(a1*Ws1) + a2*Wd1 + a3*T1 + a4*ntoy,
+           start = list(a0=0, a1=0.1, a11=10, a2=0.5, a3=0.1, a4=1),
+           data=D); summary(fit6); logLik(fit6);
+```
+Hmmm... Mærkeligt at modellen ikke ser ud til at blive bedre med logit(wind)-fit.
+
 
 # 3. AUTOREGRESSIVE MARKOV-SWITCHING MODEL (MSM-AR)######
 "\textit{A Markov-switching (also regime-switching) model is a general- ization both of Markov models and AR(p) processes. It can be seen as an autoregressive model with a state-dependent mean and variance where the states follow a Markov process. An AR(1) Markov- switching process is given by}" (REF JAN KLOP) (REF: https://cran.r-project.org/web/packages/MSwM/vignettes/examples.pdf)
@@ -131,6 +193,53 @@ For convergence / identifiability it was necessary to increase the amount of dat
 
 #### DESCRETIZING (EULER-MARYAMA)#####
 #### Continous-Descrete State Space Model (with adaptivity)
+```{r}
+library('ctsmr')
+ctsm1 <- function(data){
+  # Generate a new object of class ctsm
+  model = ctsm()
+  
+  # Add a system equation and thereby also a state
+  model$addSystem(dX ~ (phi*X)*dt + exp(p11)*dw1)
+  model$addSystem(dphi ~ 0 * dt + exp(p12)*dw2)
+  
+  # Set the names of the inputs
+  model$addInput(Ws1)
+  # Set the observation equation:
+  model$addObs(p ~ X)
+  # Set the variance of the measurement error
+  model$setVariance(p ~ exp(e11))
+  ##----------------------------------------------------------------
+  # Set the initial value (for the optimization) of the value of the state at the starting time point
+  model$setParameter(X = c(init = 5, lb = 0, ub = 25))
+  model$setParameter(phi = c(init = 0, lb = -2, ub = 2))
+  ##----------------------------------------------------------------
+  # Set the initial value for the optimization
+  #model$setParameter(Ci = c(init = 1, lb = 1E-5, ub = 1E5))
+  #model$setParameter(Cm = c(init = 1000, lb = 1E-5, ub = 1E5))
+  #model$setParameter(Ria = c(init = 20, lb = 1E-4, ub = 1E5))
+  #model$setParameter(Rim = c(init = 20, lb = 1E-4, ub = 1E5))
+  #model$setParameter(Aw = c(init = 6, lb = 1E-2, ub = 7.5+4.8+5))
+  model$setParameter(p11 = c(init = 1, lb = -30, ub = 10))
+  model$setParameter(p12 = c(init = 1, lb = -30, ub = 10))
+  model$setParameter(e11 = c(init = 1, lb = -50, ub = 10))
+  model$setParameter(a1 = c(init = 0.2, lb = -50, ub = 100))
+  #model$setParameter(a2 = c(init = 4, lb = -500, ub = 1000))
+  #model$setParameter(a3 = c(init = 4, lb = -500, ub = 1000))
+  #model$setParameter(a4 = c(init = 4, lb = -500, ub = 1000))
+  #model$setParameter(a5 = c(init = 4, lb = -500, ub = 1000))
+  ##----------------------------------------------------------------    
+  
+  # Run the parameter optimization
+  fit = model$estimate(data,firstorder = TRUE)
+  return(fit)
+}
+Dsub = D[1:400,]
+ctsm1(Dsub)
+```
+Kræver vel-installeret compiler.
+
+
 Thoughts
 \begin{enumerate}
 \item + ... rX(1-X/CAP)  | W = wind, X = True wind power
