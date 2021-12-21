@@ -1,0 +1,118 @@
+
+
+```{r setup, include=FALSE, echo=FALSE}
+library("tidyverse")
+library("GGally")
+library("plotly")
+#ibrary("TSA")
+knitr::opts_chunk$set(cache = F) # Omg mega fedt for compile-tiden med cache=TRUE <3
+```
+
+
+```{r}
+if (Sys.info()[7] == "davidipsen"){
+  setwd("~/Documents/DTU/3. Semester (MSc)/Advanced Time Series/Assignments (!)/4-Assignment")
+} else if (Sys.info()[7] == "Hvad end Kaspers PC hedder-sikkert noget UNIX-hejs ^_^"){
+}
+
+D <- read.table("comp_ex_4_scripts_2011/data/cex4WindDataInterpolated.csv", sep=",",
+                header=TRUE, stringsAsFactors=FALSE)
+D$t <- as.POSIXct(D$t, tz="UTC")
+n = dim(D)[1]
+
+# Descriptive statistics
+plot(D$p[1:1000],type='l')
+hist(D$p)
+plot(D[1:100,]) # Plot subset of from all variables
+```
+
+# EDA
+
+Just plotting the data is not too revealing, though there seems to be two states in the signal, IE. either we are generating full power or none. Looking at the histogram of values does not seem to support this however. There seem to be some seasonal effect, with more power generation in the fall and winter compared to spring and summer.
+
+```{r}
+base_plot = ggplot(data = D)
+base_plot + geom_line(aes(x = t, y = p)) + xlim(D$t[10000+1], D$t[11000])
+base_plot + geom_histogram(aes(x = p), binwidth = 0.3)
+base_plot + geom_point(aes(x = toy, y = p))+ geom_smooth(aes(x = toy, y = p))
+
+```
+
+comparing the predicted wind speeds to the power generation we see a clear trend
+
+```{r}
+ggplot(data = D)  + geom_point(aes(x = Ws3, y = p, color = "Ws3"), alpha = 0.1) + geom_point(aes(x = Ws2, y = p, color = "Ws2"), alpha = 0.1) + geom_point(aes(x = Ws1, y = p, color = "Ws1"), alpha = 0.1) + xlab("Ws")
+```
+
+Probably not too suprising. We can also see that the power generation caps at roughly 20 kW. reached at winds speeds of $15 \frac{m}{s} \sim 20 \frac{m}{s}$. above these speeds the turbine either gets capped or stopped to minimize risk of damage.
+
+The dependence also seem quite nonlinear  
+  
+looking at the dependence between wind direction and power
+```{r, warning = FALSE}
+ggplot(data = D) +
+  geom_point(aes(x = Wd3, y = p, color = "Wd3"), alpha = 0.1) +
+  geom_point(aes(x = Wd2, y = p, color = "Wd2"), alpha = 0.1) +
+  geom_point(aes(x = Wd1, y = p, color = "Wd1"), alpha = 0.1) +
+  geom_smooth(aes(x = Wd3, y = p, color = "Wd3")) +
+  geom_smooth(aes(x = Wd2, y = p, color = "Wd2")) +
+  geom_smooth(aes(x = Wd1, y = p, color = "Wd1")) +
+  xlab("Wd")
+```
+
+there seem to be some effect between wind direction and power. With directions between 200 and 300 degrees seeming to provide more power. This is probably the "head on" direction for the wind farm. again very little difference between the the 3 forecast horizons.
+
+```{r}
+ggplot(data = D) +
+  geom_point(aes(x = T3 - 272.15, y = p, color = "T3"), alpha = 0.1) +
+  geom_point(aes(x = T2 - 272.15, y = p, color = "T2"), alpha = 0.1) +
+  geom_point(aes(x = T1 - 272.15, y = p, color = "T1"), alpha = 0.1) +
+  geom_smooth(aes(x = T3 - 272.15, y = p, color = "T3")) +
+  geom_smooth(aes(x = T2 - 272.15, y = p, color = "T2")) +
+  geom_smooth(aes(x = T1 - 272.15, y = p, color = "T1")) +
+  xlab("temp")
+```
+Here there again seem to be to modes, this could be related to the effect sene in the time of year. With more power production in the fall and winter, which are also colder seasons.  
+once again also small difference between the 3 time horizons.
+
+comparing the forecast
+```{r}
+ggpairs(D, columns = c("Ws1", "Ws2", "Ws3"))
+
+```
+The wind speed predictions have a absurdly high correlation. it almost doesn't matter which time-horizon to use.
+
+```{r}
+ggpairs(D, columns = c("T1", "T2", "T3"))
+```
+Even more so with the temperature estimates
+
+```{r}
+ggpairs(D, columns = c("Wd1", "Wd2", "Wd3"))
+```
+There seem to be a bit more variation between the wind direction forecast, and some expected edge effects (as the scale wraps around).
+
+There is probably going to be some interaction between the windspeed and wind direction
+```{r}
+plot_ly(D, x = ~Ws1, y = ~Wd1, z = ~p, color = ~p)
+```
+
+```{r}
+plot_ly(D, x = ~Ws1, y = ~T1, z = ~p, color = ~p)
+```
+
+```{r}
+plot_ly(D, x = ~Wd1, y = ~T1, z = ~p, color = ~p)
+```
+There does not seem to be too much of an interaction between the variables. it might still be worthwhile to include in the models. but we would not expect a huge improvement.
+
+finally lets look at the row power output, see if there is any correaltion in the data
+
+```{r}
+acf(D$p, na.action = na.pass)
+pacf(D$p, na.action = na.pass)
+```
+so there seem to be a large correlation at lag 1 and 2
+
+
+
