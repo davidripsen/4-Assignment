@@ -8,13 +8,12 @@ output:
   html_document:
 editor_options: 
   chunk_output_type: console
-fig_width: 12
-fig_height: 6
 ---
 
 
 ```{r setup, include=FALSE, echo=FALSE}
-knitr::opts_chunk$set(cache = F) # Omg mega fedt for compile-tiden med cache=TRUE <3
+knitr::opts_chunk$set(cache = T)
+knitr::opts_chunk$set(eval = T)
 
 # Functions
 logit = function(x){
@@ -22,7 +21,10 @@ logit = function(x){
 }
 ```
 
-MANGLER: Håndtér NaN
+
+MANGLER: Håndtér NaN globalt
+
+\newpage
 
 # 1. Introduction
 This report focuses on modelling the wind power production of the wind farm in Klim. It will focus solely on the 1h ahead prediction horizon, but the models can easily be generalized for different horizons (and tied beneficially together using temporal hierarchies). This report sets out to apply many different models (for the sake of learning) instead of going very deep, comprehensivly into few models.
@@ -30,15 +32,16 @@ This report focuses on modelling the wind power production of the wind farm in K
 # 2. Explorative Data Analysis
 First, let's load the data and do some explorative data analysis. The variable of particular interest is the power $p$.
 
-```{r}
+```{r, include=FALSE}
 if (Sys.info()[7] == "davidipsen"){
-  setwd("~/Documents/DTU/3. Semester (MSc)/Advanced Time Series/Assignments/4-Assignment")
+  setwd("~/Documents/DTU/3. Semester (MSc)/Advanced Time Series/Assignments (!)/4-Assignment")
 } else if (Sys.info()[7] == "Hvad end Kaspers PC hedder-sikkert noget UNIX-hejs ^_^"){
 }
 
 D <- read.table("comp_ex_4_scripts_2011/data/cex4WindDataInterpolated.csv", sep=",",
                 header=TRUE, stringsAsFactors=FALSE)
 D$t <- as.POSIXct(D$t, tz="UTC")
+D$ntoy = cos(2*pi*D$toy/365)
 n = dim(D)[1]
 
 par(mfrow=c(2,1))
@@ -58,7 +61,7 @@ Note, the strong time serial dependance in $p$. Particularly the AR(1)-term carr
 
 Now let's analyze $p$ in relation to the explanatory variables.
 
-## Plot power vs (normalized) time-of-year
+## Plot Power vs (normalized) Ttime-of-Year
 In order to utilize the time-of-year variable in a (linear and non-linear) regression setting, I normalize the time-of-year variable by
 
 $$toy_{norm}  = cos(2\pi\cdot \frac{toy}{365})$$
@@ -77,12 +80,15 @@ lines(D$ntoy[!is.na(D$p)], predict(loessfit_ntoy, ntoy=list(D$ntoy)), col=3, lwd
 
 In order to be able to interpret the density of the points, I've added local polynomial regression smoothing using a Gaussian kernel of size 30 %. The figures indicates higher power productions in winter time.
 
-## power vs. Wind Speed
+## Power vs. Wind Speed
 
 Similarly, let's scatter the data and make a non-parametric fit for the forecasted wind speed (1h ahead).
 
 ```{r}
-library(ggplot2)
+library(ggplot2); library(RColorBrewer)
+rf <- colorRampPalette(rev(brewer.pal(11,'Spectral')))
+r <- rf(32)
+
 mask = !is.na(D$Ws1) & !is.na(D$p) & D$Ws1<25 # Mask non-NaN
 
 plot(D$Ws1[mask], D$p[mask])
@@ -92,8 +98,6 @@ points(D$Ws1[mask], predict(loess(p ~ Ws1, dat=D[mask,], span=0.3, family='gauss
 #p <- ggplot(D, aes(Ws1,p))
 # Add colouring and change bins
 #library(RColorBrewer)
-#rf <- colorRampPalette(rev(brewer.pal(11,'Spectral')))
-#r <- rf(32)
 #h3 <- p + stat_bin2d(bins=100) + scale_fill_gradientn(colours=r) + ggtitle(sprintf("Wind speed forecast (1h) vs. power"))
 #h3
 ```
@@ -101,11 +105,11 @@ points(D$Ws1[mask], predict(loess(p ~ Ws1, dat=D[mask,], span=0.3, family='gauss
 There seem to be somewhat of an logistic effect of wind speed on the power, i.e. the power increases exponentially in the beginning but becomes rather saturated with more and more wind.
 
 
-## power vs wind direction
+## Power vs Wind Direction
 ```{r}
 # Wind direction
 p <- ggplot(D, aes(Wd1,p))
-h4 <- p + stat_bin2d(bins=100) + scale_fill_gradientn(colours=r) + ggtitle(sprintf("Wind direction forecast (1h) vs. wind power"))
+h4 <- p + stat_bin2d(bins=100) + scale_fill_gradientn(colours=rf(32)) + ggtitle(sprintf("Wind direction forecast (1h) vs. wind power"))
 h4
 
 mask = !is.na(D$Wd1) & !is.na(D$p)# Mask non-NaN
@@ -117,16 +121,15 @@ points(D$Wd1[mask], predict(loessfit_Wd1, Ws1=list(D$Wd1[mask])), col=3, lwd=0.7
 
 It seems to be favourable for the wind power production if the wind direction is around 200 or 300 degrees.
 
-This findings will be utilised in the modelling section later.
+These findings will be utilised in the modelling section later.
 
 
 
-# 2. BENCHMARKS
+# 2. Simple models
 
 For benchmarking, some simple models are fitted.
 
 ```{r, include=TRUE}
-library(metrics)
 
 # Mean Model
 fit1 = lm(p ~ 1, data=D); summary(fit1); logLik(fit1)
@@ -147,7 +150,7 @@ Clearly, it has a *very* large improvement in log-likelihood when an AR(1)-term 
 
 Let's try expanding the model with the non-linearities as found in the explorative data analysis. This means: 
 \begin{enumerate}
-\item The wind speed seem to affect the power in a s-curve, i.e. use a logistic function on the wind speed, i.e. $p = ... + b\cdot\frac{e^{a \cdot WindSpeed}}{1+e^{a \cdot WindSpeed}}$
+\item The wind speed seem to affect the power in a s-curve, i.e. mause a logistic function on the wind speed, i.e. $p = ... + b\cdot\frac{e^{a \cdot WindSpeed}}{1+e^{a \cdot WindSpeed}}$
 \item The normalized time-of-year had a non-linear affect on the power. Use the loess-fit linearly to predict power, i.e. $p = ... + c \cdot \hat{f}(ntoy)$, where $\hat{f}(ntoy)$ is the local regression smoother of power as a function of normalized time-of-year.
 \item For the wind direction, utilise the loess-fit the same way as for normalized time-of-year.
 \end{enumerate}
@@ -168,6 +171,7 @@ fit6 = nls(p ~ a0  + a11*logit(a1*Ws1) + a2*Wd1 + a3*T1 + a4*ntoy,
 I.e. only a slight improvement in likelihood from the simple linear regression model (fit3a).
 
 Now let's expand the models further with the non-linear fit of wind direction and time of year.
+
 ```{r}
 # Let's use the non-parametric fit of Wind Direction
 fit7 = nls(p ~ a0  + a11*logit(a1*Ws1) + a2*predict(loessfit_Wd1, Wd1) + a3*T1 + a4*predict(loessfit_ntoy, ntoy),
@@ -201,18 +205,17 @@ Looking at the power over time, it is possible to identify some different states
 In the following section, I will for simplicity only use Ws1, Wd1, T1 and ntoy as input variables (corresponding to fit3a). Additionally, I will only use an AR(1)-term as was found to be of far greatest importance as seen in the pacf. Instead I will vary the number of states. Note that the models are nested, so for model comparison likelihood-ratio test is appropriate.
 
 ```{r, include=TRUE}
-#install.packages('MSwM')
+d#install.packages('MSwM')
 par(mfrow = c(1,1))
-library(MSwM)
 library(parallel)
-#Dsub = D[1:250,] # Subset data for dev
+library(MSwM)
 
 # Simple Linear Regression
 fit2b = lm(p ~ Ws1 + Wd1 + T1 + ntoy, data=D) ; summary(fit2b); logLik(fit2b)
 
 # Fit MSM
-fit_msm = msmFit(fit2b, k=2, p=1, sw=rep(TRUE,6), control = list(parallel = TRUE))
-summary(fit_msm)
+fit_msm2 = msmFit(fit2b, k=2, p=1, sw=rep(TRUE,7), control = list(parallel = TRUE))
+summary(fit_msm2)
 #plotProb(fit_msm, which=1)
 #plotProb(fit_msm, which=2)
 #plotProb(fit_msm, which=3)
@@ -221,10 +224,10 @@ summary(fit_msm)
 
 # It's impossible to grasp the fit for the ~40000 observations.
 # To assess the fit, fit and visualise the same model on a small subset of the data
-Dsub = D[1:1000, ]
-fit2bsub = lm(p ~ Ws1 + Wd1 + ntoy, data=Dsub)
-fit_msm_sub = msmFit(fit2bsub, k=2, p=1, sw=rep(TRUE,6), control = list(parallel = TRUE))
-plotProb(fit_msm_sub, which=2)
+Dsub = D[1:3000, ]
+fit2bsub = lm(p ~ Ws1 + Wd1 + T1 + ntoy, data=Dsub)
+fit_msm2_sub = msmFit(fit2bsub, k=2, p=1, sw=rep(TRUE,7), control = list(parallel = TRUE))
+plotProb(fit_msm2_sub, which=2)
 ```
 We see a very large improvement in likelihood and thus also AIC when compared to the best model in the previous section. 
 
@@ -233,47 +236,85 @@ Note that in order to visualise the states, I've fitted the same model on a subs
 Now it seems obvious to add another state, hopefully separating dynamics of the wind power when in decline / increasing.
 
 ```{r}
+# Fit MSM-AR with k=3 states
+fit_msm3 = msmFit(fit2b, k=3, p=1, sw=rep(TRUE,7), control = list(parallel = TRUE))
+summary(fit_msm3)
 
 
-fit_msm2_sub = msmFit(fit2bsub, k=3, p=1, sw=rep(TRUE,6), control = list(parallel = TRUE))
+# Plot subset
+fit_msm3_sub = msmFit(fit2bsub, k=3, p=1, sw=rep(TRUE,7), control = list(parallel = TRUE))
 for (i in 2:4){
-plotProb(fit_msm2_sub, which=i)
+  plotProb(fit_msm3_sub, which=i)
 }
 ```
+Again, a large improvement in likelihood with the extra state. Is the likelihood gain worth the extra parameters? I will assess that using likelihood ratio test in the end of this section.
 
-Now regime 3 corresponds to a constant period, while regime 1 and 2 seem to correspond to periods with high and low volatility.
+Now regime 1 corresponds to a constant period, while regime 2 and 3 seem to correspond to periods high and low power production respectively.
 
-Let's try add 1 or 2 more regimes
+Let's try add another state
 
-```{r}
-Dsub = D[1:2000,] # Subset data for dev - increase for identifiability
-fit2b = lm(p ~ Ws1, data=Dsub) ; summary(fit2b); logLik(fit2b) # Refit
+```{r, eval=FALSE}
+# Fit MSM-AR for k=4 states
+fit_msm4 = msmFit(fit2b, k=4, p=1, sw=rep(TRUE,7), control = list(parallel = FALSE))
 
-# Fit Markov-Switching model
-fit_msm2 = msmFit(fit2b, k=4, p=1, sw=rep(TRUE,4), control = list(parallel = TRUE))
 
+# Plot subset
+fit_msm4_sub = msmFit(fit2bsub, k=4, p=1, sw=rep(TRUE,7), control = list(parallel = FALSE))
 for (i in 2:5){
-plotProb(fit_msm2, which=i)
+  plotProb(fit_msm4_sub, which=i)
 }
 ```
 
-For convergence / identifiability it was necessary to increase the amount of data. This however, makes it hard to interpret the results. It does not seem to be the case, that the method identifies regimes of increasing and decreasing dynamics.
+However, this kills the kernel on my computer every time. This might be due to running out of memory (https://www.r-bloggers.com/2019/02/switching-regressions-cluster-time-series-data-and-understand-your-development/). To solve this issue, one might subset the data. However, this makes the likelihood values incompatible. For this assignment, a 3-state Markov-Switching AR model is sufficient.
+
+
+
+
+## Likelihood ratio tests
+```{r}
+L1 = logLik(fit4a)[1]; df1 = 7 # 1-state MSM-AR / AR(1)X
+L2 = -42051.17; df2 = 7*2+(2*2)-2; # 2-state
+L3 = -35995.38; df3 = 7*(3*3)-3; # 3-state
+
+sprintf('Likelihood ratio test of 2-state MSM-AR vs. non-linear 1-state regression: p-value = %.3f', 1-pchisq(2*(L2-L1), df=df2-df1))
+
+sprintf('Likelihood ratio test of 2-state MSM-AR vs. non-linear 1-state regression: p-value = %.3f', 1-pchisq(2*(L3-L2), df=df3-df2))
+
+sprintf('AIC of 3-state MSM-AR:  %2.f', 72026.76)
+sprintf('AIC of best benchmark model:  %3.f', AIC(fit8))
+```
+
+I.e. the Markov-Switching model is a much better fit - despite the extra parameters.
+
+Finally, let's illustrate the last 200 (in-)samples of the fit:
+```{r}
+res = msmResid(fit_msm3)
+n1 = length(res)
+fittedp = na.omit(D)$p + res[4:(n1-4)]
+
+plot(na.omit(D)$p[(n1-200):n1], type='l', ylim=c(-3,20), ylab="Power")
+lines(fittedp[(n1-200):n1], type='l', col=3)
+legend("topleft",legend=c('True power', 'Fitted power'), lty=c(1,1), col=c(1,3))
+
+par(mfrow=c(2,1))
+acf(res)
+pacf(res)
+```
+
+We see a reasonable fit, although there is a high variance in the predictions even resulting in negative (!) predictions of power. Also, there is still plenty more information in the residuals that should be modelled.
 
 
 
 
 
 
-
-
-
-#### evt. Discrete State Space Form / Extended Kalman Filter (with adaptivity) ####
+# evt. Discrete State Space Form / Extended Kalman Filter (with adaptivity) (MANGLER) ####
 $X_{t+1} = ...\theta_{t}X_t ...$ (unobserved)
 $\theta_{t+1} = \theta_t + ... + \epsilon_{t+1}$
 
 $p_t = ...X + e_t$ (observed)
 
-#### Continous-Descrete State Space Model (with adaptivity)
+# Continous-Descrete State Space Model (with adaptivity) (MANGLER)
 ```{r}
 #install.packages('pkgbuild')
 #install.packages("ctsmr", repo = "http://ctsm.info/repo/dev")
