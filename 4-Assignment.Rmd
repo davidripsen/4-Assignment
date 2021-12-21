@@ -204,8 +204,8 @@ Looking at the power over time, it is possible to identify some different states
 
 In the following section, I will for simplicity only use Ws1, Wd1, T1 and ntoy as input variables (corresponding to fit3a). Additionally, I will only use an AR(1)-term as was found to be of far greatest importance as seen in the pacf. Instead I will vary the number of states. Note that the models are nested, so for model comparison likelihood-ratio test is appropriate.
 
-```{r, include=TRUE}
-d#install.packages('MSwM')
+```{r fig1, include=TRUE, fig.height=10, fig.width=14}
+  #install.packages('MSwM')
 par(mfrow = c(1,1))
 library(parallel)
 library(MSwM)
@@ -235,7 +235,7 @@ Note that in order to visualise the states, I've fitted the same model on a subs
 
 Now it seems obvious to add another state, hopefully separating dynamics of the wind power when in decline / increasing.
 
-```{r}
+```{r fig2, fig.align = "center", fig.height=10, fig.width=14}
 # Fit MSM-AR with k=3 states
 fit_msm3 = msmFit(fit2b, k=3, p=1, sw=rep(TRUE,7), control = list(parallel = TRUE))
 summary(fit_msm3)
@@ -315,7 +315,7 @@ $\theta_{t+1} = \theta_t + ... + \epsilon_{t+1}$
 $p_t = ...X + e_t$ (observed)
 
 # Continous-Descrete State Space Model (with adaptivity) (MANGLER)
-```{r}
+```{r, eval=FALSE}
 #install.packages('pkgbuild')
 #install.packages("ctsmr", repo = "http://ctsm.info/repo/dev")
 library('ctsmr')
